@@ -1,10 +1,50 @@
-package linkguard
+// Package structure provides URL structure pattern analysis.
+package structure
 
 import (
 	"net"
 	"net/url"
 	"strings"
+
+	"github.com/solrac97gr/linkguard/types"
 )
+
+// analysis performs structural pattern analysis on URLs.
+type analysis struct {
+	weightValue float64
+}
+
+// New creates a new structure analyzer with the specified weight.
+//
+// The weight determines the importance of structure analysis in the final score.
+// Standard weight is 0.30 (30%).
+//
+// Example:
+//
+//	analyzer := linkguard.NewAnalyzer(
+//	    shannon.New(0.35),
+//	    unicode.New(0.35),
+//	    structure.New(0.30),
+//	)
+func New(weight float64) types.AnalysisMethod {
+	return &analysis{weightValue: weight}
+}
+
+// Analyze implements the AnalysisMethod interface for structure analysis.
+func (a *analysis) Analyze(rawURL string, result *types.Result) float64 {
+	result.StructureFlags = Analyze(rawURL)
+	return Score(result.StructureFlags)
+}
+
+// Weight returns the weight of structure analysis.
+func (a *analysis) Weight() float64 {
+	return a.weightValue
+}
+
+// Name returns the name of this analysis method.
+func (a *analysis) Name() string {
+	return "Structure Analysis"
+}
 
 // Suspicious TLDs commonly associated with abuse or free registration.
 var suspiciousTLDs = map[string]bool{
@@ -45,9 +85,9 @@ const (
 	maxNormalLength     = 200
 )
 
-// analyzeStructure inspects the URL structure for suspicious patterns.
-func analyzeStructure(rawURL string) StructureReport {
-	report := StructureReport{
+// Analyze inspects the URL structure for suspicious patterns.
+func Analyze(rawURL string) types.StructureReport {
+	report := types.StructureReport{
 		Length: len(rawURL),
 	}
 
@@ -128,8 +168,8 @@ func analyzeStructure(rawURL string) StructureReport {
 	return report
 }
 
-// structureScore converts the structure report into a 0.0-1.0 suspicion score.
-func structureScore(r StructureReport) float64 {
+// Score converts the structure report into a 0.0-1.0 suspicion score.
+func Score(r types.StructureReport) float64 {
 	score := 0.0
 
 	if r.HasIPAddress {

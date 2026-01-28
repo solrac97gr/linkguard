@@ -1,8 +1,49 @@
-package linkguard
+// Package unicode provides Unicode-based attack detection for URLs.
+package unicode
 
 import (
+	"sort"
 	"unicode"
+
+	"github.com/solrac97gr/linkguard/types"
 )
+
+// analysis performs Unicode-based attack detection on URLs.
+type analysis struct {
+	weightValue float64
+}
+
+// New creates a new Unicode analyzer with the specified weight.
+//
+// The weight determines the importance of Unicode analysis in the final score.
+// Standard weight is 0.35 (35%).
+//
+// Example:
+//
+//	analyzer := linkguard.NewAnalyzer(
+//	    shannon.New(0.35),
+//	    unicode.New(0.35),
+//	    structure.New(0.30),
+//	)
+func New(weight float64) types.AnalysisMethod {
+	return &analysis{weightValue: weight}
+}
+
+// Analyze implements the AnalysisMethod interface for Unicode analysis.
+func (a *analysis) Analyze(rawURL string, result *types.Result) float64 {
+	result.UnicodeFlags = Analyze(rawURL)
+	return Score(result.UnicodeFlags)
+}
+
+// Weight returns the weight of Unicode analysis.
+func (a *analysis) Weight() float64 {
+	return a.weightValue
+}
+
+// Name returns the name of this analysis method.
+func (a *analysis) Name() string {
+	return "Unicode Analysis"
+}
 
 // Common homoglyphs: characters from non-Latin scripts that visually resemble ASCII letters.
 // Map from suspicious rune to the ASCII character it imitates.
@@ -120,9 +161,9 @@ func scriptName(r rune) string {
 	}
 }
 
-// analyzeUnicode inspects a URL string for suspicious Unicode patterns.
-func analyzeUnicode(url string) UnicodeReport {
-	report := UnicodeReport{}
+// Analyze inspects a URL string for suspicious Unicode patterns.
+func Analyze(url string) types.UnicodeReport {
+	report := types.UnicodeReport{}
 
 	scripts := make(map[string]bool)
 	totalChars := 0
@@ -157,6 +198,9 @@ func analyzeUnicode(url string) UnicodeReport {
 		report.ScriptsFound = append(report.ScriptsFound, s)
 	}
 
+	// Sort scripts for deterministic output
+	sort.Strings(report.ScriptsFound)
+
 	// Mixed scripts: having letter scripts beyond ASCII/Latin is suspicious in URLs.
 	letterScripts := 0
 	for s := range scripts {
@@ -172,8 +216,8 @@ func analyzeUnicode(url string) UnicodeReport {
 	return report
 }
 
-// unicodeScore converts the unicode report into a 0.0-1.0 suspicion score.
-func unicodeScore(r UnicodeReport) float64 {
+// Score converts the unicode report into a 0.0-1.0 suspicion score.
+func Score(r types.UnicodeReport) float64 {
 	score := 0.0
 
 	if r.MixedScripts {

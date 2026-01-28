@@ -9,51 +9,6 @@ const (
 	weightStructure = 0.30
 )
 
-// Analyze performs a full entropy and structural analysis of the given URL string
-// and returns a Result with the overall risk score, risk level, and detailed reports.
-func Analyze(rawURL string) Result {
-	result := Result{
-		URL: rawURL,
-	}
-
-	// 1. Shannon entropy analysis.
-	result.Entropy = ShannonEntropy(rawURL)
-	eScore := entropyScore(result.Entropy)
-
-	// 2. Unicode / homoglyph analysis.
-	result.UnicodeFlags = analyzeUnicode(rawURL)
-	uScore := unicodeScore(result.UnicodeFlags)
-
-	// 3. Structural analysis.
-	result.StructureFlags = analyzeStructure(rawURL)
-	sScore := structureScore(result.StructureFlags)
-
-	// Weighted combination.
-	result.Score = eScore*weightEntropy + uScore*weightUnicode + sScore*weightStructure
-
-	// Clamp to [0, 1].
-	if result.Score > 1.0 {
-		result.Score = 1.0
-	}
-
-	// Derive risk level.
-	result.Risk = riskFromScore(result.Score)
-
-	// Build human-readable reasons.
-	result.Reasons = buildReasons(result)
-
-	return result
-}
-
-// AnalyzeMultiple analyzes a slice of URLs and returns results for each.
-func AnalyzeMultiple(urls []string) []Result {
-	results := make([]Result, len(urls))
-	for i, u := range urls {
-		results[i] = Analyze(u)
-	}
-	return results
-}
-
 // riskFromScore maps a numeric score to a RiskLevel.
 func riskFromScore(score float64) RiskLevel {
 	switch {
