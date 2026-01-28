@@ -135,6 +135,10 @@ func scriptName(r rune) string {
 	switch {
 	case r <= 0x007F:
 		return "ASCII"
+	// Check for full-width characters, which are often used in homoglyph attacks.
+	// They belong to the "Halfwidth and Fullwidth Forms" block.
+	case r >= 0xFF00 && r <= 0xFFEF:
+		return "Other"
 	case unicode.Is(unicode.Latin, r):
 		return "Latin"
 	case unicode.Is(unicode.Cyrillic, r):
@@ -203,15 +207,16 @@ func Analyze(url string) types.UnicodeReport {
 
 	// Mixed scripts: having letter scripts beyond ASCII/Latin is suspicious in URLs.
 	letterScripts := 0
+	hasLatinOrASCII := false
 	for s := range scripts {
 		switch s {
 		case "ASCII", "Latin":
-			// These are expected in URLs.
+			hasLatinOrASCII = true
 		default:
 			letterScripts++
 		}
 	}
-	report.MixedScripts = letterScripts > 0
+	report.MixedScripts = letterScripts > 0 && hasLatinOrASCII
 
 	return report
 }
@@ -226,12 +231,10 @@ func Score(r types.UnicodeReport) float64 {
 
 	// Homoglyphs are a strong signal.
 	switch {
-	case r.HomoglyphCount >= 5:
-		score += 0.5
 	case r.HomoglyphCount >= 3:
-		score += 0.4
+		score += 0.5
 	case r.HomoglyphCount >= 1:
-		score += 0.3
+		score += 0.4
 	}
 
 	// Invisible characters are almost always malicious in URLs.

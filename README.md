@@ -79,24 +79,7 @@ fmt.Printf("Score: %.2f, Risk: %s\n", result.Score, result.Risk)
 // Output: Score: 0.03, Risk: none
 ```
 
-### Batch Analysis
 
-```go
-// Create analyzer
-analyzer := linkguard.NewAnalyzer()
-
-urls := []string{
-    "https://www.google.com",
-    "https://g\u043E\u043Egle.com",  // Homoglyph attack
-    "http://192.168.1.1:8080/admin",
-    "https://example.tk/phishing",
-}
-
-results := analyzer.AnalyzeMultiple(urls)
-for i, result := range results {
-    fmt.Printf("URL %d: %s (%.2f)\n", i+1, result.Risk, result.Score)
-}
-```
 
 ### Detailed Inspection
 
@@ -527,21 +510,13 @@ Benchmarks run on Apple M3 (arm64):
 
 | Operation | Time | Memory | Allocs |
 |-----------|------|--------|--------|
-| **Single URL Analysis** |
-| Simple URL | 1.59 µs | 1.2 KB | 9 |
-| Complex URL | 3.32 µs | 1.2 KB | 10 |
-| Suspicious URL | 2.93 µs | 1.5 KB | 19 |
-| Long URL | 6.64 µs | 2.7 KB | 16 |
-| **Batch Analysis** |
-| 5 URLs | 18.4 µs | 8.8 KB | 68 |
-| 3 URLs | 8.27 µs | 4.5 KB | 39 |
-| **Component Benchmarks** |
-| Shannon Entropy (simple) | 759 ns | 936 B | 5 |
-| Unicode Analysis (ASCII) | 539 ns | 16 B | 1 |
-| Structure Analysis | 235 ns | 240 B | 3 |
-| **Parallel Performance** |
-| Analyze (parallel) | 791 ns | 1.2 KB | 10 |
-| Multiple (parallel) | 4.93 µs | 8.8 KB | 68 |
+| **Full Analysis**         |
+| Simple URL                | 1142 ns/op   | 744 B/op      | 8 allocs/op   |
+| Suspicious URL            | 3189 ns/op   | 1784 B/op     | 22 allocs/op  |
+| **Per-Method Analysis**   |
+| Entropy Analysis          | 1100 ns/op   | 936 B/op      | 5 allocs/op   |
+| Unicode Analysis          | 1124 ns/op   | 48 B/op       | 2 allocs/op   |
+| Structure Analysis        | 370.7 ns/op  | 256 B/op      | 4 allocs/op   |
 
 **Key Takeaways:**
 - ⚡ **Sub-microsecond** analysis for simple URLs
@@ -551,7 +526,7 @@ Benchmarks run on Apple M3 (arm64):
 
 Run benchmarks yourself:
 ```bash
-go test -bench=. -benchmem
+go test -bench=. -benchmem -tags=benchmark
 ```
 
 ## 🏗️ Architecture

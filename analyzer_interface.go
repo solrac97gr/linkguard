@@ -110,15 +110,6 @@ func (a *Analyzer) Analyze(rawURL string) Result {
 	return result
 }
 
-// AnalyzeMultiple analyzes multiple URLs using this analyzer.
-func (a *Analyzer) AnalyzeMultiple(urls []string) []Result {
-	results := make([]Result, len(urls))
-	for i, u := range urls {
-		results[i] = a.Analyze(u)
-	}
-	return results
-}
-
 // AddMethod adds a new analysis method to this analyzer.
 // This modifies the analyzer in-place.
 func (a *Analyzer) AddMethod(method AnalysisMethod) {
