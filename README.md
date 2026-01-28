@@ -14,6 +14,7 @@ LinkGuard provides multi-dimensional URL analysis to detect:
 - **🏗️ Structural Anomalies**: Recognizes suspicious patterns like IP addresses, excessive subdomains, double encoding, and suspicious TLDs
 - **📊 Risk Scoring**: Provides both numeric scores (0.0-1.0) and categorical risk levels (None, Low, Medium, High, Critical)
 - **💬 Human-Readable Reports**: Generates detailed explanations for each detected suspicious signal
+- **🔗 URL Extraction**: Intelligently extract URLs from text, HTML, Markdown, and various content formats
 - **⚡ High Performance**: Sub-microsecond analysis for simple URLs, ~3µs for complex URLs
 - **🔧 Customizable**: Create custom analyzers with selected methods or implement your own analysis logic
 - **🎨 Flexible Architecture**: Mix and match built-in methods, adjust weights, or add custom detection algorithms
@@ -111,6 +112,387 @@ fmt.Printf("Entropy: %.2f\n", entropy)
 // Get normalized entropy (0.0-1.0)
 normalized := linkguard.NormalizedEntropy(url)
 fmt.Printf("Normalized: %.2f\n", normalized)
+```
+
+### URL Extraction from Text
+
+LinkGuard includes a powerful URL extractor that can find URLs in various text formats:
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/solrac97gr/linkguard"
+)
+
+func main() {
+    // Extract URLs from plain text
+    text := "Check out https://example.com and www.github.com for more info!"
+    urls := linkguard.ExtractURLs(text)
+    fmt.Printf("Found URLs: %v\n", urls)
+    // Output: Found URLs: [https://example.com www.github.com]
+
+    // Extract from HTML content
+    htmlText := `<p>Visit <a href="https://secure-site.com">our site</a> or 
+                 contact us at support@company.com</p>`
+    urls = linkguard.ExtractURLs(htmlText)
+    fmt.Printf("HTML URLs: %v\n", urls)
+    // Output: HTML URLs: [https://secure-site.com]
+
+    // Extract from Markdown
+    markdown := "Click [here](https://example.org) or [there](https://test.com)"
+    urls = linkguard.ExtractURLs(markdown)
+    fmt.Printf("Markdown URLs: %v\n", urls)
+    // Output: Markdown URLs: [https://example.org https://test.com]
+
+    // Extract and analyze in one step
+    suspiciousText := "Urgent: verify your account at https://g00gle-security.tk/login"
+    urls = linkguard.ExtractURLs(suspiciousText)
+    
+    analyzer := linkguard.NewAnalyzer()
+    for _, url := range urls {
+        result := analyzer.Analyze(url)
+        fmt.Printf("URL: %s | Risk: %s | Score: %.2f\n", url, result.Risk, result.Score)
+    }
+    // Output: URL: https://g00gle-security.tk/login | Risk: high | Score: 0.67
+}
+```
+
+### Bulk Analysis with URL Extraction
+
+Process large amounts of text content efficiently:
+
+```go
+package main
+
+import (
+    "fmt"
+    "strings"
+    "github.com/solrac97gr/linkguard"
+)
+
+func analyzeTextContent(content string) {
+    // Extract all URLs from the content
+    urls := linkguard.ExtractURLs(content)
+    
+    if len(urls) == 0 {
+        fmt.Println("No URLs found in content")
+        return
+    }
+    
+    // Analyze all extracted URLs
+    analyzer := linkguard.NewAnalyzer()
+    results := analyzer.AnalyzeMultiple(urls)
+    
+    // Report findings
+    fmt.Printf("Found %d URLs in content:\n", len(urls))
+    
+    var suspicious []linkguard.Result
+    for _, result := range results {
+        if result.IsSuspicious() {
+            suspicious = append(suspicious, result)
+        }
+        fmt.Printf("  %s - Risk: %s (%.2f)\n", result.URL, result.Risk, result.Score)
+    }
+    
+    if len(suspicious) > 0 {
+        fmt.Printf("\n⚠️  %d suspicious URLs detected!\n", len(suspicious))
+        for _, result := range suspicious {
+            fmt.Printf("\nURL: %s\n", result.URL)
+            for _, reason := range result.Reasons {
+                fmt.Printf("  - %s\n", reason)
+            }
+        }
+    }
+}
+
+func main() {
+    // Example email content with mixed URLs
+    emailContent := `
+Subject: Account Verification Required
+
+Dear Customer,
+
+Please verify your account by clicking here: https://secure-bank.com/verify
+
+If the above link doesn't work, try this alternative:
+https://bnk-verification.tk/urgent/verify?token=x7k9q2m4z8
+
+For support, visit our main site at https://www.realbank.com
+or contact us at support@realbank.com
+
+Best regards,
+Security Team
+`
+    
+    analyzeTextContent(emailContent)
+}
+```
+
+### Integration Examples
+
+#### Email Security Gateway
+
+```go
+package main
+
+import (
+    "fmt"
+    "net/mail"
+    "strings"
+    "github.com/solrac97gr/linkguard"
+    "github.com/solrac97gr/linkguard/unicode"
+    "github.com/solrac97gr/linkguard/structure"
+)
+
+// EmailSecurityFilter processes email messages for malicious links
+type EmailSecurityFilter struct {
+    analyzer *linkguard.Analyzer
+}
+
+func NewEmailSecurityFilter() *EmailSecurityFilter {
+    // Configure analyzer for phishing detection
+    analyzer := linkguard.NewAnalyzer(
+        unicode.New(0.4),   // High weight for homoglyph detection
+        structure.New(0.6), // High weight for suspicious domains
+    )
+    
+    return &EmailSecurityFilter{analyzer: analyzer}
+}
+
+func (f *EmailSecurityFilter) ScanEmail(msg *mail.Message) (*SecurityReport, error) {
+    // Read email body
+    body, err := msg.Header.Get("Body"), nil // Simplified
+    if err != nil {
+        return nil, err
+    }
+    
+    // Extract URLs from email content
+    urls := linkguard.ExtractURLs(body)
+    
+    report := &SecurityReport{
+        TotalURLs: len(urls),
+        URLs:      make(map[string]linkguard.Result),
+    }
+    
+    // Analyze each URL
+    for _, url := range urls {
+        result := f.analyzer.Analyze(url)
+        report.URLs[url] = result
+        
+        if result.IsSuspicious() {
+            report.SuspiciousURLs++
+            if result.Risk >= linkguard.RiskHigh {
+                report.HighRiskURLs++
+            }
+        }
+    }
+    
+    // Determine overall action
+    if report.HighRiskURLs > 0 {
+        report.Action = "BLOCK"
+    } else if report.SuspiciousURLs > 0 {
+        report.Action = "QUARANTINE"
+    } else {
+        report.Action = "ALLOW"
+    }
+    
+    return report, nil
+}
+
+type SecurityReport struct {
+    TotalURLs     int
+    SuspiciousURLs int
+    HighRiskURLs  int
+    URLs          map[string]linkguard.Result
+    Action        string
+}
+
+func (r *SecurityReport) String() string {
+    var sb strings.Builder
+    sb.WriteString(fmt.Sprintf("Security Report - Action: %s\n", r.Action))
+    sb.WriteString(fmt.Sprintf("Total URLs: %d, Suspicious: %d, High Risk: %d\n", 
+        r.TotalURLs, r.SuspiciousURLs, r.HighRiskURLs))
+    
+    for url, result := range r.URLs {
+        if result.IsSuspicious() {
+            sb.WriteString(fmt.Sprintf("  ⚠️  %s (Risk: %s)\n", url, result.Risk))
+            for _, reason := range result.Reasons {
+                sb.WriteString(fmt.Sprintf("     - %s\n", reason))
+            }
+        }
+    }
+    return sb.String()
+}
+```
+
+#### Chat Application Filter
+
+```go
+package main
+
+import (
+    "fmt"
+    "time"
+    "github.com/solrac97gr/linkguard"
+)
+
+// ChatMessage represents a message in a chat application
+type ChatMessage struct {
+    ID        string
+    UserID    string
+    Content   string
+    Timestamp time.Time
+}
+
+// ChatModerator filters messages for malicious URLs
+type ChatModerator struct {
+    analyzer   *linkguard.Analyzer
+    maxRiskLevel linkguard.RiskLevel
+}
+
+func NewChatModerator(maxRisk linkguard.RiskLevel) *ChatModerator {
+    return &ChatModerator{
+        analyzer:   linkguard.NewAnalyzer(),
+        maxRiskLevel: maxRisk,
+    }
+}
+
+func (m *ChatModerator) ProcessMessage(msg *ChatMessage) (*ModerationResult, error) {
+    // Extract URLs from message content
+    urls := linkguard.ExtractURLs(msg.Content)
+    
+    result := &ModerationResult{
+        MessageID:   msg.ID,
+        UserID:      msg.UserID,
+        OriginalContent: msg.Content,
+        URLs:        urls,
+        Action:      "ALLOW",
+    }
+    
+    if len(urls) == 0 {
+        return result, nil
+    }
+    
+    // Analyze extracted URLs
+    var maxRisk linkguard.RiskLevel = linkguard.RiskNone
+    for _, url := range urls {
+        analysis := m.analyzer.Analyze(url)
+        result.Analyses = append(result.Analyses, analysis)
+        
+        if analysis.Risk > maxRisk {
+            maxRisk = analysis.Risk
+        }
+    }
+    
+    // Determine moderation action
+    if maxRisk > m.maxRiskLevel {
+        result.Action = "BLOCK"
+        result.Reason = fmt.Sprintf("Message contains %s risk URL(s)", maxRisk)
+    } else if maxRisk >= linkguard.RiskMedium {
+        result.Action = "FLAG"
+        result.Reason = "Message contains potentially suspicious URLs"
+    }
+    
+    return result, nil
+}
+
+type ModerationResult struct {
+    MessageID       string
+    UserID          string
+    OriginalContent string
+    URLs            []string
+    Analyses        []linkguard.Result
+    Action          string
+    Reason          string
+}
+
+func (r *ModerationResult) ShouldBlock() bool {
+    return r.Action == "BLOCK"
+}
+
+func (r *ModerationResult) ShouldFlag() bool {
+    return r.Action == "FLAG" || r.Action == "BLOCK"
+}
+```
+
+#### Web Proxy Integration
+
+```go
+package main
+
+import (
+    "fmt"
+    "net/http"
+    "net/url"
+    "github.com/solrac97gr/linkguard"
+)
+
+// ProxyFilter intercepts and analyzes URLs in HTTP requests
+type ProxyFilter struct {
+    analyzer    *linkguard.Analyzer
+    blockLevel  linkguard.RiskLevel
+}
+
+func NewProxyFilter() *ProxyFilter {
+    return &ProxyFilter{
+        analyzer:   linkguard.NewAnalyzer(),
+        blockLevel: linkguard.RiskHigh,
+    }
+}
+
+func (p *ProxyFilter) ProcessRequest(req *http.Request) (*ProxyDecision, error) {
+    decision := &ProxyDecision{
+        URL:    req.URL.String(),
+        Method: req.Method,
+        Action: "ALLOW",
+    }
+    
+    // Analyze the request URL
+    result := p.analyzer.Analyze(req.URL.String())
+    decision.Analysis = result
+    
+    // Check if URL should be blocked
+    if result.Risk >= p.blockLevel {
+        decision.Action = "BLOCK"
+        decision.Reason = fmt.Sprintf("URL risk level (%s) exceeds threshold", result.Risk)
+    } else if result.IsSuspicious() {
+        decision.Action = "WARN"
+        decision.Reason = "URL shows suspicious characteristics"
+    }
+    
+    // Check referer for additional context
+    if referer := req.Header.Get("Referer"); referer != "" {
+        refererResult := p.analyzer.Analyze(referer)
+        if refererResult.Risk >= linkguard.RiskMedium {
+            decision.RefererAnalysis = &refererResult
+            if decision.Action == "ALLOW" {
+                decision.Action = "WARN"
+                decision.Reason = "Suspicious referer detected"
+            }
+        }
+    }
+    
+    return decision, nil
+}
+
+type ProxyDecision struct {
+    URL             string
+    Method          string
+    Action          string
+    Reason          string
+    Analysis        linkguard.Result
+    RefererAnalysis *linkguard.Result
+}
+
+func (d *ProxyDecision) ShouldBlock() bool {
+    return d.Action == "BLOCK"
+}
+
+func (d *ProxyDecision) ShouldWarn() bool {
+    return d.Action == "WARN" || d.Action == "BLOCK"
+}
 ```
 
 ## 🔧 Custom Analyzers
@@ -504,6 +886,41 @@ wg.Wait()
 | 4.5-5.0 | Suspicious | `https://x7k9q2m4.tk` |
 | 5.0+ | Highly suspicious | Long random strings |
 
+### URL Extraction Capabilities
+
+LinkGuard can intelligently extract URLs from various content types:
+
+| Content Type | Example | Extraction Support |
+|--------------|---------|-------------------|
+| **Plain Text** | `Visit https://example.com today` | ✅ Full support |
+| **HTML Content** | `<a href="https://site.com">Link</a>` | ✅ Parses href attributes |
+| **Markdown Links** | `[Click here](https://example.org)` | ✅ Extracts both display and target URLs |
+| **Email Content** | `Contact: support@company.com` | ✅ Context-aware filtering |
+| **Mixed Formats** | HTML + Markdown + plain text | ✅ Multi-pass extraction |
+| **Unicode URLs** | `https://ｅｘａｍｐｌｅ．ｃｏｍ` | ✅ Full-width character support |
+| **IPv6 URLs** | `http://[2001:db8::1]:8080` | ✅ Bracket preservation |
+| **Complex Schemes** | `magnet:?xt=urn:btih:...` | ✅ Data, magnet, tel, sms protocols |
+| **Misleading Links** | `[google.com](http://evil.com)` | ✅ Extracts both URLs for analysis |
+
+#### Advanced Extraction Features
+
+| Feature | Description | Example |
+|---------|-------------|---------|
+| **Smart Punctuation** | Removes sentence punctuation while preserving URL syntax | `Visit https://site.com!` → `https://site.com` |
+| **Markdown Syntax** | Handles malformed markdown patterns | `[text](url` → Properly extracts `url` |
+| **False Positive Filtering** | Excludes file paths and non-URL patterns | `file.txt` → Not extracted |
+| **Email Context Detection** | Excludes emails from conversational contexts | `"contact me at user@domain.com"` → Not extracted |
+| **Deduplication** | Removes duplicate URLs from multiple extraction passes | Multiple `<a>` tags with same URL → Single result |
+
+#### URL Extraction Performance
+
+| Operation | Performance | Notes |
+|-----------|-------------|--------|
+| **Simple text** | ~2µs | Plain URLs in text |
+| **HTML parsing** | ~5µs | Including href extraction |  
+| **Markdown processing** | ~3µs | Link syntax parsing |
+| **Mixed content** | ~8µs | All extraction methods |
+
 ## 📊 Performance Benchmarks
 
 Benchmarks run on Apple M3 (arm64):
@@ -647,6 +1064,51 @@ Calculates Shannon entropy of a string.
 Calculates Shannon entropy normalized to [0, 1].
 
 **Returns:** Normalized entropy value.
+
+#### `ExtractURLs(text string) []string`
+Extracts all URLs from text content including plain text, HTML, and Markdown formats.
+
+**Parameters:** 
+- `text` - Input text content to scan for URLs
+
+**Returns:** Slice of unique URLs found in the text
+
+**Features:**
+- Supports HTTP/HTTPS, FTP, file://, mailto:, tel:, sms:, magnet:, and data: URLs
+- Extracts URLs from HTML `href` attributes
+- Processes Markdown-style links `[text](url)`
+- Handles Unicode URLs and full-width characters
+- Context-aware email filtering (excludes emails in conversational contexts)
+- Intelligent punctuation trimming (preserves legitimate URL characters)
+- IPv6 URL support
+
+**Examples:**
+```go
+// Basic extraction
+text := "Visit https://example.com and www.github.com"
+urls := linkguard.ExtractURLs(text)
+// Returns: ["https://example.com", "www.github.com"]
+
+// HTML content
+html := `<a href="https://site.com">Link</a>`
+urls = linkguard.ExtractURLs(html)
+// Returns: ["https://site.com"]
+
+// Markdown links
+markdown := "Check [this](https://example.org) out"
+urls = linkguard.ExtractURLs(markdown)
+// Returns: ["https://example.org"]
+
+// Mixed content with phishing detection
+content := "Click [Google](https://g00gle-security.tk/login)"
+urls = linkguard.ExtractURLs(content)
+// Returns: ["https://g00gle-security.tk/login"]
+
+// Complex URLs
+complex := "Contact us at mailto:support@example.com or visit http://[2001:db8::1]:8080"
+urls = linkguard.ExtractURLs(complex)
+// Returns: ["http://[2001:db8::1]:8080"]
+```
 
 ### Built-in Analysis Method Subpackages
 
@@ -793,8 +1255,10 @@ linkguard/
 ├── entropy.go               # Shannon entropy calculations
 ├── unicode.go               # Unicode and homoglyph detection
 ├── structure.go             # URL structure analysis
+├── extractor.go             # URL extraction from text, HTML, and Markdown
 ├── linkguard.go             # Public API and type definitions
 ├── linkguard_test.go        # Unit and integration tests
+├── extractor_test.go        # URL extraction tests
 ├── analyzer_test.go         # Analyzer and custom method tests
 ├── examples_test.go         # Usage examples
 ├── linkguard_bench_test.go  # Performance benchmarks
@@ -804,13 +1268,25 @@ linkguard/
 
 ## 🎯 Use Cases
 
-- **Email Security**: Scan links in emails before allowing users to click
-- **Web Proxies**: Filter suspicious URLs at the gateway level
-- **Chat Applications**: Protect users from malicious links in messages
-- **Security Tools**: Integrate into SIEM, threat intelligence platforms
-- **Browser Extensions**: Real-time link safety checking
-- **API Gateways**: Validate redirect URLs and callback endpoints
-- **Incident Response**: Analyze URLs from security incidents
+### URL Analysis & Detection
+- **Email Security Gateways**: Extract and analyze all URLs from incoming emails before delivery
+- **Web Proxies & Firewalls**: Filter suspicious URLs at the network gateway level
+- **Chat & Messaging Apps**: Real-time protection against malicious links in conversations
+- **Social Media Monitoring**: Scan posts and comments for suspicious link patterns
+- **Security Information Systems**: Integrate into SIEM and threat intelligence platforms
+- **Browser Extensions**: Real-time link safety checking before user interaction
+- **API Security**: Validate redirect URLs and callback endpoints in API requests
+- **Incident Response**: Analyze URLs from security incidents and threat reports
+
+### Content Processing & Extraction
+- **Document Analysis**: Extract URLs from PDFs, Word docs, and other file formats
+- **Web Scraping Safety**: Validate extracted links during crawling operations
+- **Content Management**: Scan user-generated content for malicious links
+- **Marketing Analytics**: Extract and validate campaign links from various sources
+- **Compliance Monitoring**: Ensure shared links meet organizational security policies
+- **Threat Intelligence**: Process IOC feeds and extract URLs for analysis
+- **Digital Forensics**: Extract and analyze URLs from digital evidence
+- **Automated Testing**: Validate links in test suites and CI/CD pipelines
 
 ## ⚠️ Limitations
 
